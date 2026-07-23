@@ -381,8 +381,8 @@ export default function App() {
         <div className="flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-400">
           <Info size={14} className="mt-0.5 shrink-0 text-amber-400" />
           <p>
-            Headlines and quotes from Finnhub. The signal bar is an approximation based on aggregated sentiment
-            per company (when available) and is not financial advice.
+            Headlines and quotes from Finnhub. The signal bar reflects each company's price move today
+            (when available) and is not financial advice.
           </p>
         </div>
       </div>
@@ -420,4 +420,4 @@ export default function App() {
       </footer>
     </div>
   );
-          }
+}
