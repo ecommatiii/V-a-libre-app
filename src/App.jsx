@@ -16,6 +16,7 @@ import {
   RefreshCw,
   AlertCircle,
   Calendar,
+  LineChart,
 } from "lucide-react";
 
 // URL of your Render backend. In development you can point to http://localhost:3001.
@@ -138,6 +139,140 @@ function CardSkeleton() {
       <div className="mt-2 h-3 w-4/5 rounded bg-slate-800" />
       <div className="mt-5 h-3 w-full rounded bg-slate-800" />
     </div>
+  );
+}
+
+const CHART_PRESETS = [
+  { label: "Gold", symbol: "TVC:GOLD" },
+  { label: "Oil", symbol: "TVC:USOIL" },
+  { label: "EUR/USD", symbol: "OANDA:EURUSD" },
+  { label: "Bitcoin", symbol: "BINANCE:BTCUSDT" },
+  { label: "S&P 500", symbol: "AMEX:SPY" },
+  { label: "Nasdaq", symbol: "NASDAQ:QQQ" },
+];
+
+// Carga el script de TradingView una sola vez y monta el widget cuando cambia el símbolo.
+function TradingViewWidget({ symbol }) {
+  const hostRef = useRef(null);
+  const widgetIdRef = useRef(`tv_${Math.random().toString(36).slice(2)}`);
+
+  useEffect(() => {
+    if (!symbol || !hostRef.current) return;
+    const host = hostRef.current;
+    host.innerHTML = "";
+    const target = document.createElement("div");
+    target.id = widgetIdRef.current;
+    target.style.height = "100%";
+    host.appendChild(target);
+
+    const buildWidget = () => {
+      if (!host.isConnected || !window.TradingView) return;
+      new window.TradingView.widget({
+        autosize: true,
+        symbol,
+        interval: "D",
+        timezone: "Etc/UTC",
+        theme: "dark",
+        style: "1",
+        locale: "en",
+        toolbar_bg: "#0f172a",
+        enable_publishing: false,
+        studies: ["MASimple@tv-basicstudies"],
+        container_id: widgetIdRef.current,
+      });
+    };
+
+    if (window.TradingView) {
+      buildWidget();
+    } else {
+      let script = document.getElementById("tradingview-widget-script");
+      if (!script) {
+        script = document.createElement("script");
+        script.id = "tradingview-widget-script";
+        script.src = "https://s3.tradingview.com/tv.js";
+        script.async = true;
+        document.body.appendChild(script);
+      }
+      script.addEventListener("load", buildWidget, { once: true });
+    }
+  }, [symbol]);
+
+  return <div ref={hostRef} className="h-[420px] w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-900" />;
+}
+
+function LiveChart() {
+  const [symbol, setSymbol] = useState("NASDAQ:AAPL");
+  const [query, setQuery] = useState("");
+  const [resolving, setResolving] = useState(false);
+  const [resolveError, setResolveError] = useState(null);
+
+  const resolveSymbol = useCallback(async () => {
+    const q = query.trim();
+    if (!q) return;
+    setResolving(true);
+    setResolveError(null);
+    try {
+      const data = await fetchJson(`${BACKEND_URL}/api/resolve-symbol?q=${encodeURIComponent(q)}`);
+      if (!data || !data.symbol) {
+        setResolveError("No match found for that company.");
+        return;
+      }
+      setSymbol(data.symbol);
+    } catch {
+      setResolveError("Couldn't look that up. Please try again.");
+    } finally {
+      setResolving(false);
+    }
+  }, [query]);
+
+  return (
+    <section className="mx-auto max-w-6xl px-4 pt-4">
+      <h2 className="mb-2 flex items-center gap-2 font-display text-lg font-bold text-slate-100">
+        <LineChart size={16} className="text-amber-400" />
+        Live Chart
+      </h2>
+
+      <div className="relative mb-2">
+        <button
+          onClick={resolveSymbol}
+          aria-label="Look up symbol"
+          className="absolute left-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-500 hover:text-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+        >
+          <Search size={16} />
+        </button>
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") resolveSymbol();
+          }}
+          placeholder="Type a company (e.g. Tesla) and press Enter"
+          aria-label="Search a company for the chart"
+          className="w-full rounded-lg border border-slate-800 bg-slate-900 py-2.5 pl-9 pr-3 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+        />
+      </div>
+
+      {resolving && <p className="mb-2 text-xs text-slate-500">Looking up symbol…</p>}
+      {resolveError && <p className="mb-2 text-xs text-rose-400">{resolveError}</p>}
+
+      <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+        {CHART_PRESETS.map((p) => (
+          <button
+            key={p.symbol}
+            onClick={() => setSymbol(p.symbol)}
+            className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-1 focus:ring-amber-500 ${
+              symbol === p.symbol ? "bg-amber-500 text-slate-950" : "bg-slate-900 text-slate-300 hover:bg-slate-800"
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      <TradingViewWidget symbol={symbol} />
+      <p className="mt-2 text-xs text-slate-600">Chart powered by TradingView.</p>
+    </section>
   );
 }
 
@@ -387,6 +522,8 @@ export default function App() {
         </div>
       </div>
 
+      <LiveChart />
+
       <EconCalendar events={econEvents} loading={loadingEcon} error={errorEcon} onRetry={loadEconCalendar} />
 
       <main className="mx-auto max-w-6xl px-4 py-5">
@@ -394,30 +531,4 @@ export default function App() {
           <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-800 bg-slate-900 px-4 py-12 text-center">
             <AlertCircle size={22} className="text-rose-400" />
             <p className="max-w-md text-sm text-slate-400">{errorNews}</p>
-            <button onClick={handleRefresh} className="rounded-full bg-amber-500 px-4 py-1.5 text-xs font-semibold text-slate-950">
-              Retry
-            </button>
-          </div>
-        ) : loadingNews ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <CardSkeleton key={i} />
-            ))}
-          </div>
-        ) : news.length === 0 ? (
-          <p className="py-16 text-center text-sm text-slate-500">No news found.</p>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {news.map((item) => (
-              <NewsCard key={item.id} item={item} />
-            ))}
-          </div>
-        )}
-      </main>
-
-      <footer className="mx-auto max-w-6xl px-4 pb-8 pt-2 text-center text-xs text-slate-600">
-        VíaLibre · live data via Finnhub
-      </footer>
-    </div>
-  );
-}
+           
